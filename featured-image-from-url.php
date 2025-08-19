@@ -7,6 +7,8 @@ Author: Hashe Computer Solutions
 License: MIT
 Requires at least: 5.8
 Tested up to: 6.6
+Text Domain: fifu
+Domain Path: /languages
 */
 
 if (!defined('ABSPATH')) { exit; }
@@ -16,13 +18,22 @@ final class FIFU_Plugin {
     const NONCE  = 'fifu_from_url';
 
     public static function init(){
+        // Load text domain for translations
+        add_action('init', function(){
+            load_plugin_textdomain('fifu', false, dirname(plugin_basename(__FILE__)).'/languages');
+        });
+
         add_action('admin_enqueue_scripts', [__CLASS__, 'enqueue']);
         add_action('wp_ajax_fifu_fetch_featured_from_url', [__CLASS__, 'ajax_fetch']);
     }
 
     public static function enqueue($hook){
-        // Only where media modal is used for featured image
-        if (!in_array($hook, ['post.php','post-new.php','site-editor.php','widgets.php','nav-menus.php'], true)) return;
+        // Only load on post editor screens that support thumbnails
+        if (!in_array($hook, ['post.php','post-new.php'], true)) return;
+
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        $pt = $screen && ! empty($screen->post_type) ? $screen->post_type : null;
+        if ($pt && ! post_type_supports($pt, 'thumbnail')) return;
 
         wp_enqueue_media();
         wp_register_script(self::HANDLE, plugins_url('assets/js/featured-image-from-url.js', __FILE__), ['media-views','jquery'], '1.0.0', true);
@@ -48,8 +59,24 @@ final class FIFU_Plugin {
         if (!current_user_can('upload_files')) wp_send_json_error(['message' => 'forbidden']);
 
         $post_id = isset($_POST['postId']) ? (int) $_POST['postId'] : 0;
-        $url     = esc_url_raw(trim((string)($_POST['url'] ?? '')));
-        if (!$url) wp_send_json_error(['message' => 'missing URL']);
+        $url     = isset($_POST['url']) ? esc_url_raw(trim(wp_unslash((string) $_POST['url']))) : '';
+        if (!$url || !wp_http_validate_url($url)) {
+            wp_send_json_error(['message' => 'Invalid URL']);
+        }
+
+        // Optional HEAD request for content-type and size validation
+        $resp = wp_remote_head($url, ['timeout' => 8]);
+        if (!is_wp_error($resp)) {
+            $ctype = strtolower(trim(explode(';', (string) wp_remote_retrieve_header($resp, 'content-type'))[0]));
+            $clen  = (int) wp_remote_retrieve_header($resp, 'content-length');
+            $allowed = ['image/jpeg','image/png','image/gif','image/webp'];
+            if ($ctype && !in_array($ctype, $allowed, true)) {
+                wp_send_json_error(['message' => 'Only JPEG, PNG, GIF, or WebP allowed']);
+            }
+            if ($clen && $clen > 10 * 1024 * 1024) {
+                wp_send_json_error(['message' => 'Image too large']);
+            }
+        }
 
         // Load required admin helpers
         if (!function_exists('media_sideload_image')) require_once ABSPATH.'wp-admin/includes/media.php';
