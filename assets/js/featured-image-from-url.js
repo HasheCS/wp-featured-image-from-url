@@ -17,8 +17,8 @@
         render: function(){
           var html = '' +
             '<div style="padding:16px;max-width:560px;">' +
-              '<p><input type="url" class="regular-text fifu-url" style="width:100%" placeholder="'+ FIFU.ph +'" /></p>' +
-              '<p><button type="button" class="button button-primary fifu-go">'+ FIFU.btn +'</button></p>' +
+              '<p><input type="url" class="regular-text fifu-url" style="width:100%" placeholder="'+ FIFU.ph +'" aria-label="Image URL" /></p>' +
+              '<p><button type="button" class="button button-primary fifu-go" aria-label="Fetch image">'+ FIFU.btn +'</button></p>' +
               '<p class="fifu-msg" style="margin-top:8px;"></p>' +
             '</div>';
           this.$el.html(html);
@@ -44,6 +44,12 @@
                 if (resp.data && resp.data.html){
                   $('#postimagediv .inside').html(resp.data.html);
                 }
+                // Gutenberg: refresh featured image in block editor
+                try {
+                  if (wp.data && wp.data.dispatch) {
+                    wp.data.dispatch('core/editor').editPost({ featured_media: resp.data.id });
+                  }
+                } catch(e){}
                 try { frame.close(); } catch(e){}
               } else {
                 $msg.text((resp && resp.data && resp.data.message) || FIFU.err);
@@ -68,7 +74,7 @@
     };
   }
 
-  // Also patch generic select frames
+  // Also patch generic select frames (block editor, site editor, etc.)
   $(document).on('click', '#set-post-thumbnail, .editor-post-featured-image__toggle, .editor-post-featured-image__edit', function(){
     setTimeout(function(){
       if (window.wp && wp.media && wp.media.frame) addFromUrlTab(wp.media.frame, FIFU.postId || 0);
