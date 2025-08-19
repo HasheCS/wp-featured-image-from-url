@@ -1,30 +1,25 @@
 # Featured Image From URL
 
-Adds a **From URL** tab to the WordPress media modal so editors can paste an image URL, fetch it, and set it as the featured image for the current post.
+🖼️ A tiny WordPress 5.8+ plugin that lets you set a featured image directly from any image URL... without leaving the editor or reloading the page. Built to save time when you already have an image link handy.
+
+## Demo
+
+▶️ [Watch the demo video](https://www.awesomescreenshot.com/video/43200081?key=365c86286c2d4bb74f20db58c807b14e)
+
+![From URL Tab Screenshot](https://github.com/HasheCS/wp-featured-image-from-url/blob/main/assets/js/screenshot.png?raw=true)
 
 ## Features
-- New media modal tab titled **From URL**
-- Fetches and sideloads any direct image URL into the Media Library
-- Automatically sets the fetched image as the Featured Image
-- Returns refreshed Featured Image metabox, no page reload
+- Adds a **“From URL”** tab inside the Media Modal.
+- Paste any direct image URL → automatically sideloads to Media Library.
+- Instantly sets it as the featured image.
+- Uses core WordPress functions (`media_sideload_image`) with proper nonce and capability checks.
 
 ## Requirements
 - WordPress 5.8+
-- User capability `upload_files`
+- PHP 7.4+
 
-## Install
-1. Download the ZIP from releases.
-2. In wp-admin go to Plugins → Add New → Upload Plugin and upload the ZIP.
-3. Activate the plugin.
-4. Open any post or page and click **Set featured image**. You will see the **From URL** tab in the media modal.
-
-## Development
-- Main plugin file: `featured-image-from-url.php`
-- Script: `assets/js/featured-image-from-url.js`
-
-## Security
-- Protected by a nonce and `upload_files` capability check.
-- Uses core `media_sideload_image` to download and attach images.
-
-## License
-MIT
+## Installation
+1. Download the [latest release](https://github.com/HasheCS/wp-featured-image-from-url/releases).
+2. Upload and activate via **Plugins → Add New**.
+3. Open the post editor → “Set Featured Image” → select **From URL** tab.
+4. Paste your image URL and click **Insert as Featured Image**.
