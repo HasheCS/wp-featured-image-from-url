@@ -1,0 +1,41 @@
+name: Plugin regression checks
+
+on:
+  push:
+    branches: ['main', 'feature/**', 'fix/**', 'release/**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  php:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.2', '8.3']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          tools: none
+      - name: Lint plugin and smoke tests
+        run: |
+          php -l featured-image-from-url.php
+          php -l tests/php-smoke.php
+      - name: Execute media and security regression tests
+        run: php tests/php-smoke.php
+
+  javascript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Verify media modal integration
+        run: |
+          node --check assets/js/featured-image-from-url.js
+          node tests/frame-regression.cjs
