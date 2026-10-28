@@ -1,4 +1,4 @@
-name: Release ZIP
+name: Release WordPress ZIP
 
 on:
   push:
@@ -9,31 +9,47 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  validate-and-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout exact tagged source
         uses: actions/checkout@v4
-
-      - name: Prepare ZIP
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run security and functionality regressions
         run: |
-          set -e
-          PLUGINDIR="wp-featured-image-from-url"
-          mkdir -p dist
-          mkdir -p "$PLUGINDIR"
-          shopt -s extglob
-          cp -R !(dist|.git|.github) "$PLUGINDIR"/
-          cd "$PLUGINDIR"
-          # prune dev files if any in future
-          rm -rf node_modules vendor
-          cd ..
-          zip -r "dist/featured-image-from-url-${GITHUB_REF_NAME}.zip" "$PLUGINDIR"
-
-      - name: Create GitHub Release
+          set -euo pipefail
+          php -l featured-image-from-url.php
+          php tests/php-smoke.php
+          node --check assets/js/featured-image-from-url.js
+          node tests/frame-regression.cjs
+      - name: Package only installable WordPress plugin files
+        shell: bash
+        run: |
+          set -euo pipefail
+          slug=featured-image-from-url
+          mkdir -p "dist/$slug/assets/js"
+          cp featured-image-from-url.php readme.txt LICENSE.txt "dist/$slug/"
+          cp assets/js/featured-image-from-url.js "dist/$slug/assets/js/"
+          test -f "dist/$slug/featured-image-from-url.php"
+          test -f "dist/$slug/assets/js/featured-image-from-url.js"
+          (
+            cd dist
+            zip -q -r "$slug-${GITHUB_REF_NAME}.zip" "$slug"
+            sha256sum "$slug-${GITHUB_REF_NAME}.zip" > SHA256SUMS.txt
+          )
+          unzip -tq "dist/$slug-${GITHUB_REF_NAME}.zip"
+      - name: Publish tag's release assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
           files: |
             dist/featured-image-from-url-${{ github.ref_name }}.zip
+            dist/SHA256SUMS.txt
