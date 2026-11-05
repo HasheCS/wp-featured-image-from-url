@@ -10,6 +10,14 @@ jobs:
   wp-lifecycle:
     runs-on: ubuntu-latest
     timeout-minutes: 22
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - wordpress: '5.8'
+            php: '7.4'
+          - wordpress: '7.1.4'
+            php: '8.2'
     services:
       mysql:
         image: mysql:8.0
@@ -25,7 +33,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2'
+          php-version: ${{ matrix.php }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -43,7 +51,7 @@ jobs:
             curl -fsSL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o "$RUNNER_TEMP/wp-cli.phar"
             WP="php $RUNNER_TEMP/wp-cli.phar"
             ROOT="$RUNNER_TEMP/wordpress"
-            $WP core download --path="$ROOT" --version=7.1.4
+            $WP core download --path="$ROOT" --version="${{ matrix.wordpress }}"
             $WP config create --path="$ROOT" --dbname=featured_wp_qa --dbuser=root --dbpass=isolated_ci_only --dbhost=127.0.0.1 --skip-check
             $WP core install --path="$ROOT" --url='http://localhost:8098' --title='Hashe Featured Image Test' --admin_user=qa_admin --admin_password=disposable_test_only --admin_email=qa@example.invalid --skip-email
             $WP plugin install "$GITHUB_WORKSPACE/dist/wp-featured-image-from-url-v1.1.0.zip" --activate --path="$ROOT"
@@ -52,6 +60,15 @@ jobs:
             $WP plugin uninstall featured-image-from-url --path="$ROOT"
             $WP plugin install "$GITHUB_WORKSPACE/dist/featured-image-from-url-v1.1.0-wporg.zip" --activate --path="$ROOT"
             HASHE_QA_CHANNEL=wordpress-org $WP eval-file "$GITHUB_WORKSPACE/tests/wordpress-lifecycle.php" --path="$ROOT"
+            if [[ "${{ matrix.wordpress }}" == '7.1.4' ]]; then
+              $WP plugin install plugin-check --activate --path="$ROOT"
+              $WP plugin check "$ROOT/wp-content/plugins/featured-image-from-url" --format=csv --path="$ROOT" | tee "$RUNNER_TEMP/featured-plugin-check.csv"
+              if grep -q ',ERROR,' "$RUNNER_TEMP/featured-plugin-check.csv"; then
+                echo 'WPORG_PLUGIN_CHECK_ERRORS_BLOCK_CANDIDATE'
+                exit 27
+              fi
+              echo 'OFFICIAL_WORDPRESS_ORG_PLUGIN_CHECK=PASS'
+            fi
             $WP plugin deactivate featured-image-from-url --path="$ROOT"
             $WP plugin uninstall featured-image-from-url --path="$ROOT"
             if $WP plugin is-installed featured-image-from-url --path="$ROOT";then echo 'POST_TEST_UNINSTALL_FAILED';exit 5;fi
