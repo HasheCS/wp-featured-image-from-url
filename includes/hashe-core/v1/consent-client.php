@@ -27,6 +27,7 @@ if ( ! class_exists( __NAMESPACE__ . '\\ConsentClient', false ) ) {
             add_action( 'admin_notices', array( $this, 'activation_notice' ) );
             add_action( 'admin_post_hashe_fifu_privacy_choice', array( $this, 'handle_admin_choice' ) );
             add_action( $this->hook, array( $this, 'send_report' ) );
+            add_action( 'rest_api_init', array( $this, 'register_site_proof' ) );
         }
 
         public static function on_activation() {
@@ -243,6 +244,44 @@ if ( ! class_exists( __NAMESPACE__ . '\\ConsentClient', false ) ) {
             exit;
         }
 
+        /** Publicly verifies domain ownership only after admin Allow and a reviewed contract.
+         * An arbitrary visitor never receives the secret, only a nonce-bound HMAC.
+         * There is no installation ID or proof route response before opt-in.
+         */
+        public function register_site_proof() {
+            if ( ! function_exists( 'register_rest_route' ) ) return;
+            register_rest_route( 'hashe/v1', '/site-proof', array(
+                'methods' => 'GET',
+                'callback' => array( $this, 'answer_site_proof' ),
+                'permission_callback' => '__return_true',
+            ) );
+        }
+
+        public function answer_site_proof( $request ) {
+            $state = $this->preference();
+            $contract = $this->contract();
+            $nonce = is_object( $request ) && method_exists( $request, 'get_param' )
+                ? $request->get_param( 'challenge' ) : '';
+            $installation = $state['installation_id'] ?? '';
+            $secret = $state['secret_hex'] ?? '';
+            if ( ! $contract || 'allowed' !== ( $state['status'] ?? '' ) ||
+                $contract['version'] !== ( $state['policy_version'] ?? '' ) ||
+                ! is_string( $nonce ) || ! preg_match( '/\\A[0-9a-f]{64}\\z/D', $nonce ) ||
+                ! is_string( $secret ) || ! preg_match( '/\\A[0-9a-f]{64}\\z/D', $secret ) ||
+                ! is_string( $installation ) ||
+                ! preg_match( '/\\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\z/D', $installation ) ) {
+                return new \\WP_Error( 'hashe_site_proof_unavailable', 'Not available.', array( 'status' => 404 ) );
+            }
+            $proof = hash_hmac( 'sha256', $nonce . "\\n" . $this->slug . "\\n" . $installation,
+                hex2bin( $secret ) );
+            return array(
+                'schema_version' => 1,
+                'plugin' => $this->slug,
+                'installation_id' => $installation,
+                'proof' => $proof,
+            );
+        }
+
         private function schedule_report( $delay ) {
             if ( ! wp_next_scheduled( $this->hook ) ) {
                 wp_schedule_single_event( time() + (int) $delay, $this->hook );
@@ -301,7 +340,11 @@ if ( ! class_exists( __NAMESPACE__ . '\\ConsentClient', false ) ) {
                 ),
             );
             if ( empty( $state['enrolled'] ) ) {
-                if ( ! $this->post( $contract['enroll_endpoint'], $data, $state ) ) {
+                // Exact same-host WordPress REST URL is verified by Hashe with
+                // a fresh server-owned challenge and the local consent secret.
+                $enrollment = $data;
+                $enrollment['site_proof_url'] = rest_url( 'hashe/v1/site-proof' );
+                if ( ! $this->post( $contract['enroll_endpoint'], $enrollment, $state ) ) {
                     $this->schedule_report( DAY_IN_SECONDS );
                     return; // Site-ownership proof failed; do not send report.
                 }
