@@ -20,11 +20,15 @@ for channel in ('independent','wordpress-org'):
     if not any(name.endswith('/consent-client.php') for name in files):
         raise RuntimeError('consent_client_not_packaged')
     if channel=='independent':
+        if 'Text Domain: fifu' not in header:
+            raise RuntimeError('independent_gettext_identity_changed')
         if 'Update URI: https://plugins.hashe.com/wp-featured-image-from-url' not in header:
             raise RuntimeError('independent_update_uri_missing')
         if not any(name.endswith('/update-client.php') for name in files):
             raise RuntimeError('independent_updater_missing')
     else:
+        if 'Text Domain: featured-image-from-url' not in header or "'fifu'" in header:
+            raise RuntimeError('wporg_gettext_domain_mismatch')
         if 'Update URI:' in header or any(name.endswith('/update-client.php') for name in files):
             raise RuntimeError('wporg_external_updater_forbidden')
     print('PASS_CHANNEL_'+channel.upper().replace('-','_'))
