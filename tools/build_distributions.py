@@ -50,6 +50,7 @@ def package_files(channel):
     common = [
         'readme.txt','LICENSE.txt','assets/js/featured-image-from-url.js',
         'includes/hashe-core/v1/consent-client.php',
+        'includes/hashe-core/v1/site-proof-client.php',
     ]
     if channel == 'independent':
         common.append('includes/hashe-core/v1/update-client.php')
