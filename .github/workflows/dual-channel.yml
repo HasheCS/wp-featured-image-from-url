@@ -37,5 +37,6 @@ jobs:
           php tests/php-smoke.php
           php tests/hashe-update-client.test.php
           php tests/hashe-consent-client.test.php
+          php tests/site-proof.test.php
           node --check assets/js/featured-image-from-url.js
           node tests/frame-regression.cjs
