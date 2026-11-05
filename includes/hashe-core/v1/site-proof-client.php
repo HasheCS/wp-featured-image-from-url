@@ -43,7 +43,7 @@ if (!class_exists(__NAMESPACE__.'\\Responder', false)) {
                 || !preg_match('/\A[A-Za-z0-9._-]{8,64}\z/D',$notice)
                 || !is_string($host) || strlen($host)>253) return self::deny();
             $url=get_site_url();
-            $local=parse_url((string)$url);
+            $local=wp_parse_url((string)$url);
             if (!is_array($local) || strtolower((string)($local['scheme']??''))!=='https'
                 || empty($local['host']) || isset($local['port'])) return self::deny();
             $actualHost=strtolower(rtrim((string)$local['host'],'.'));
