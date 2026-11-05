@@ -266,13 +266,13 @@ if ( ! class_exists( __NAMESPACE__ . '\\ConsentClient', false ) ) {
             $secret = $state['secret_hex'] ?? '';
             if ( ! $contract || 'allowed' !== ( $state['status'] ?? '' ) ||
                 $contract['version'] !== ( $state['policy_version'] ?? '' ) ||
-                ! is_string( $nonce ) || ! preg_match( '/\\A[0-9a-f]{64}\\z/D', $nonce ) ||
-                ! is_string( $secret ) || ! preg_match( '/\\A[0-9a-f]{64}\\z/D', $secret ) ||
+                ! is_string( $nonce ) || ! preg_match( '/\A[0-9a-f]{64}\z/D', $nonce ) ||
+                ! is_string( $secret ) || ! preg_match( '/\A[0-9a-f]{64}\z/D', $secret ) ||
                 ! is_string( $installation ) ||
-                ! preg_match( '/\\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\z/D', $installation ) ) {
-                return new \\WP_Error( 'hashe_site_proof_unavailable', 'Not available.', array( 'status' => 404 ) );
+                ! preg_match( '/\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/D', $installation ) ) {
+                return new \WP_Error( 'hashe_site_proof_unavailable', 'Not available.', array( 'status' => 404 ) );
             }
-            $proof = hash_hmac( 'sha256', $nonce . "\\n" . $this->slug . "\\n" . $installation,
+            $proof = hash_hmac( 'sha256', $nonce . "\n" . $this->slug . "\n" . $installation,
                 hex2bin( $secret ) );
             return array(
                 'schema_version' => 1,
