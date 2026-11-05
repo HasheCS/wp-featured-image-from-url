@@ -36,6 +36,16 @@ def package_files(channel):
         main = main.replace(' * Text Domain:', UPDATE_URI + ' * Text Domain:', 1)
         if UPDATE_URI not in main:
             raise RuntimeError('independent_update_uri_not_inserted')
+    else:
+        # WordPress.org requires gettext's domain to match its directory slug.
+        # Keep the established 'fifu' domain untouched in the independent
+        # edition: a channel-specific build must not rename users' plugin.
+        if main.count(' * Text Domain: fifu') != 1 or main.count("'fifu'") < 1:
+            raise RuntimeError('unexpected_existing_gettext_identity')
+        main = main.replace(' * Text Domain: fifu', ' * Text Domain: featured-image-from-url', 1)
+        main = main.replace("'fifu'", "'featured-image-from-url'")
+        if "'fifu'" in main:
+            raise RuntimeError('unconverted_wordpress_org_translation_domain')
     files = {INSTALLED_FOLDER+'/'+MAIN: main.encode('utf-8')}
     common = [
         'readme.txt','LICENSE.txt','assets/js/featured-image-from-url.js',
