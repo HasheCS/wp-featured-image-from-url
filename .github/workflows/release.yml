@@ -1,55 +1,68 @@
-name: Release WordPress ZIP
-
+name: Publish owner-approved Featured Image independent ZIP
 on:
-  push:
-    tags:
-      - 'v*'
-
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing reviewed annotated stable tag
+        required: true
+        type: string
+      explicit_approval:
+        description: Owner approval code
+        required: true
+        type: string
 permissions:
   contents: write
-
 jobs:
-  validate-and-release:
+  publish:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout exact tagged source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify owner-approved stable source/tag
+        env:
+          TAG: ${{ inputs.release_tag }}
+          APPROVAL: ${{ inputs.explicit_approval }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$APPROVAL" == 'PUBLISH-APPROVED-HASHE-FEATURED-IMAGE' ]] || exit 2
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 2
+          git show-ref --verify --quiet "refs/tags/$TAG" || exit 3
+          [[ "$(git cat-file -t "refs/tags/$TAG")" == tag ]] || exit 3
+          [[ "$(git rev-list -n 1 "$TAG")" == "$GITHUB_SHA" ]] || exit 3
+          if gh release view "$TAG" >/dev/null 2>&1; then echo 'Existing release cannot be overwritten'; exit 4; fi
+          VERSION="${TAG#v}"
+          grep -Fq " * Version: $VERSION" featured-image-from-url.php
+          grep -Fq "Stable tag: $VERSION" readme.txt
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
-          tools: none
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Run security and functionality regressions
+      - name: Complete prepublish release quality checks
         run: |
           set -euo pipefail
           php -l featured-image-from-url.php
           php tests/php-smoke.php
-          node --check assets/js/featured-image-from-url.js
           node tests/frame-regression.cjs
-      - name: Package only installable WordPress plugin files
-        shell: bash
-        run: |
-          set -euo pipefail
-          slug=featured-image-from-url
-          mkdir -p "dist/$slug/assets/js"
-          cp featured-image-from-url.php readme.txt LICENSE.txt "dist/$slug/"
-          cp assets/js/featured-image-from-url.js "dist/$slug/assets/js/"
-          test -f "dist/$slug/featured-image-from-url.php"
-          test -f "dist/$slug/assets/js/featured-image-from-url.js"
-          (
-            cd dist
-            zip -q -r "$slug-${GITHUB_REF_NAME}.zip" "$slug"
-            sha256sum "$slug-${GITHUB_REF_NAME}.zip" > SHA256SUMS.txt
-          )
-          unzip -tq "dist/$slug-${GITHUB_REF_NAME}.zip"
-      - name: Publish tag's release assets
+          python3 tests/distribution-check.py
+          python3 tools/build_distributions.py --output dist
+          (cd dist && sha256sum --check INDEPENDENT-SHA256SUMS.txt && sha256sum --check WPORG-SHA256SUMS.txt)
+      - name: Publish immutable independent ZIP only
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.release_tag }}
           draft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: false
+          fail_on_unmatched_files: true
           generate_release_notes: true
           files: |
-            dist/featured-image-from-url-${{ github.ref_name }}.zip
-            dist/SHA256SUMS.txt
+            dist/wp-featured-image-from-url-${{ inputs.release_tag }}.zip
+            dist/INDEPENDENT-SHA256SUMS.txt
