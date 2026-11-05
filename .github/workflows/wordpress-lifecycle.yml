@@ -19,7 +19,7 @@ jobs:
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping --silent -proot"
+          --health-cmd="mysqladmin ping --silent -uroot -pisolated_ci_only"
           --health-interval=10s --health-timeout=5s --health-retries=12
     steps:
       - uses: actions/checkout@v4
@@ -35,7 +35,7 @@ jobs:
           WP_CLI_ALLOW_ROOT: '1'
         run: |
           (
-            clear
+            clear 2>/dev/null || true
             set -euo pipefail
             php tests/php-smoke.php
             python3 tests/distribution-check.py
