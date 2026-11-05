@@ -35,6 +35,7 @@ function is_wp_error( $value ) { return false; }
 function wp_remote_retrieve_response_code( $response ) { return $response['response']['code'] ?? 0; }
 function wp_json_encode( $v ) { return json_encode( $v ); }
 function get_site_url() { return 'https://client.example/'; }
+function rest_url( $route ) { return 'https://client.example/wp-json/' . ltrim( $route, '/' ); }
 function get_file_data( $p, $fields ) { return array( 'Version' => '1.1.0' ); }
 function wp_generate_uuid4() { return '11111111-1111-4111-8111-111111111111'; }
 function check_admin_referer( $action ) { return true; }
