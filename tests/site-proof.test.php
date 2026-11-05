@@ -47,6 +47,7 @@ $expected=hash_hmac('sha256',$nonce."\n".'wp-featured-image-from-url'."\n".$id,h
 qa(is_array($r)&&($r['proof']??'')===$expected,'proof binds fresh nonce, exact slug, installation ID and local secret');
 qa(($r['schema_version']??null)===1&&($r['plugin']??null)==='wp-featured-image-from-url','proof schema is exact');
 qa(!isset($r['secret_hex']),'proof never discloses local credential');
+qa(!isset($r['installation_id']),'public proof response does not disclose installation UUID');
 $r=$c->answer_site_proof(new HasheProofRequest('invalid_nonce'));
 qa($r instanceof WP_Error,'bad challenge returns no identity');
 $GLOBALS['hashe_options']['hashe_fifu_optional_reporting_v1']['status']='revocation-pending';
