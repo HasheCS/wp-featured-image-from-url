@@ -222,6 +222,8 @@ FIFU_Plugin::init();
  * explicit site-owner consent and reviewed secure service contract exist.
  */
 require_once __DIR__ . '/includes/hashe-core/v1/consent-client.php';
+require_once __DIR__ . '/includes/hashe-core/v1/site-proof-client.php';
+\Hashe\PluginTools\SiteProofV1\Responder::boot('wp-featured-image-from-url','hashe_fifu_optional_reporting_v1');
 ( new \Hashe\FeaturedImage\PluginTools\V1\ConsentClient(
     'wp-featured-image-from-url',
     plugin_basename( __FILE__ )
