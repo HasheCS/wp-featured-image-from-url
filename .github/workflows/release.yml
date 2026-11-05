@@ -51,6 +51,8 @@ jobs:
           set -euo pipefail
           php -l featured-image-from-url.php
           php tests/php-smoke.php
+          php tests/hashe-update-client.test.php
+          php tests/hashe-consent-client.test.php
           node tests/frame-regression.cjs
           python3 tests/distribution-check.py
           python3 tools/build_distributions.py --output dist
