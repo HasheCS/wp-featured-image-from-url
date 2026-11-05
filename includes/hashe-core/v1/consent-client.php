@@ -62,7 +62,8 @@ if ( ! class_exists( __NAMESPACE__ . '\\ConsentClient', false ) ) {
          * entered in a form.
          *
          * Contract fields: version, privacy_url, retention, cadence,
-         * report_endpoint, revoke_endpoint, authenticated_headers (callable).
+         * report_endpoint, revoke_endpoint, enroll_endpoint. Authentication uses a
+         * local random secret generated only after explicit administrator Allow.
          */
         private function contract() {
             $c = apply_filters( 'hashe_fifu_optional_reporting_contract', array() );
@@ -70,19 +71,18 @@ if ( ! class_exists( __NAMESPACE__ . '\\ConsentClient', false ) ) {
                 return false;
             }
             foreach ( array( 'version', 'privacy_url', 'retention', 'cadence',
-                'report_endpoint', 'revoke_endpoint', 'authenticated_headers' ) as $field ) {
+                'report_endpoint', 'revoke_endpoint', 'enroll_endpoint' ) as $field ) {
                 if ( ! isset( $c[ $field ] ) ) {
                     return false;
                 }
             }
             foreach ( array( 'version', 'privacy_url', 'retention', 'cadence',
-                'report_endpoint', 'revoke_endpoint' ) as $field ) {
+                'report_endpoint', 'revoke_endpoint', 'enroll_endpoint' ) as $field ) {
                 if ( ! is_string( $c[ $field ] ) || '' === trim( $c[ $field ] ) ) {
                     return false;
                 }
             }
-            if ( ! is_callable( $c['authenticated_headers'] ) ||
-                ! preg_match( '/^[A-Za-z0-9._-]{1,32}$/D', $c['version'] ) ||
+            if ( ! preg_match( '/^[A-Za-z0-9._-]{1,32}$/D', $c['version'] ) ||
                 strlen( $c['retention'] ) > 300 ||
                 strlen( $c['cadence'] ) > 200 || 'Every 30 days' !== $c['cadence'] ) {
                 return false;
@@ -90,6 +90,7 @@ if ( ! class_exists( __NAMESPACE__ . '\\ConsentClient', false ) ) {
             $allowed = array(
                 'report_endpoint' => 'https://plugins.hashe.com/api/v1/telemetry/report',
                 'revoke_endpoint' => 'https://plugins.hashe.com/api/v1/telemetry/revoke',
+                'enroll_endpoint' => 'https://plugins.hashe.com/api/v1/telemetry/enroll',
             );
             foreach ( $allowed as $field => $url ) {
                 if ( $c[ $field ] !== $url ) {
@@ -202,16 +203,24 @@ if ( ! class_exists( __NAMESPACE__ . '\\ConsentClient', false ) ) {
                 if ( ! $contract || '1' !== $explicit ) {
                     wp_die( esc_html( 'Reporting cannot be enabled without the approved disclosure and explicit opt-in.' ), '', array( 'response' => 400 ) );
                 }
-                $identity = ( 'allowed' === ( $prior['status'] ?? '' ) )
-                    ? ( $prior['installation_id'] ?? '' ) : '';
-                if ( ! is_string( $identity ) || ! preg_match( '/^[a-f0-9-]{36}$/D', $identity ) ) {
-                    $identity = wp_generate_uuid4();
+                if ( 'allowed' === ( $prior['status'] ?? '' ) &&
+                    ( $prior['policy_version'] ?? '' ) !== $contract['version'] ) {
+                    wp_die( esc_html( 'Revoke the old reporting permission before accepting a changed privacy notice.' ), '', array( 'response' => 409 ) );
                 }
+                $reuse = 'allowed' === ( $prior['status'] ?? '' ) &&
+                    preg_match( '/\\A[a-f0-9]{64}\\z/D', (string) ( $prior['secret_hex'] ?? '' ) ) &&
+                    preg_match( '/\\A[0-9a-f-]{36}\\z/D', (string) ( $prior['installation_id'] ?? '' ) );
+                $identity = $reuse ? $prior['installation_id'] : wp_generate_uuid4();
+                $secret = $reuse ? $prior['secret_hex'] : bin2hex( random_bytes(32) );
                 update_option( $this->option, array(
                     'status' => 'allowed',
                     'at' => $now,
                     'policy_version' => $contract['version'],
                     'installation_id' => $identity,
+                    'secret_hex' => $secret,
+                    'consented_at_utc' => $reuse && isset( $prior['consented_at_utc'] )
+                        ? $prior['consented_at_utc'] : gmdate( 'Y-m-d\\TH:i:s\\Z', $now ),
+                    'enrolled' => $reuse && ! empty( $prior['enrolled'] ),
                 ), false );
                 $this->schedule_report( 60 );
             } elseif ( 'revoke' === $choice || 'retry-deletion' === $choice ) {
@@ -240,31 +249,28 @@ if ( ! class_exists( __NAMESPACE__ . '\\ConsentClient', false ) ) {
             }
         }
 
-        private function headers( $contract, $mode ) {
-            try {
-                $headers = call_user_func( $contract['authenticated_headers'], $mode );
-            } catch ( \Throwable $e ) {
-                return false;
-            }
-            if ( ! is_array( $headers ) || ! isset( $headers['Authorization'] ) ||
-                ! is_string( $headers['Authorization'] ) ||
-                ! preg_match( '/^Bearer [A-Za-z0-9._~-]{24,512}$/D', $headers['Authorization'] ) ) {
-                return false;
-            }
+        /** An installation secret is local and not issued by an external filter. */
+        private function headers( $state ) {
+            $secret = (string) ( $state['secret_hex'] ?? '' );
+            if ( ! preg_match( '/\\A[0-9a-f]{64}\\z/D', $secret ) ) return false;
             return array(
-                'Authorization' => $headers['Authorization'],
+                'Authorization' => 'Bearer ' . $secret,
                 'Content-Type' => 'application/json',
                 'Accept' => 'application/json',
             );
         }
 
-        private function post( $url, $data, $contract, $mode ) {
-            $headers = $this->headers( $contract, $mode );
-            if ( ! $headers ) {
-                return false;
-            }
+        private function post( $url, $data, $state ) {
+            $allowed = array(
+                'https://plugins.hashe.com/api/v1/telemetry/enroll',
+                'https://plugins.hashe.com/api/v1/telemetry/report',
+                'https://plugins.hashe.com/api/v1/telemetry/revoke',
+            );
+            if ( ! in_array( $url, $allowed, true ) ) return false;
+            $headers = $this->headers( $state );
+            if ( ! $headers ) return false;
             $response = wp_remote_post( $url, array(
-                'timeout' => 4,
+                'timeout' => 10,
                 'redirection' => 0,
                 'sslverify' => true,
                 'limit_response_size' => 4096,
@@ -280,18 +286,29 @@ if ( ! class_exists( __NAMESPACE__ . '\\ConsentClient', false ) ) {
             $contract = $this->contract();
             if ( ! $contract || 'allowed' !== ( $state['status'] ?? '' ) ||
                 $contract['version'] !== ( $state['policy_version'] ?? '' ) ||
-                ! isset( $state['installation_id'] ) ) {
-                return; // No consent, no matching disclosure, no network.
+                ! isset( $state['installation_id'], $state['secret_hex'], $state['consented_at_utc'] ) ) {
+                return; // Reporting cannot activate without a reviewed contract and Allow.
             }
             $data = array(
+                'plugin' => $this->slug,
+                'version' => (string) ( get_file_data( WP_PLUGIN_DIR . '/' . $this->plugin_file, array( 'Version' => 'Version' ) )['Version'] ?? '' ),
                 'site_url' => get_site_url(),
-                'plugin_slug' => $this->slug,
-                'plugin_version' => (string) ( get_file_data( WP_PLUGIN_DIR . '/' . $this->plugin_file, array( 'Version' => 'Version' ) )['Version'] ?? '' ),
                 'installation_id' => $state['installation_id'],
-                'reported_at' => gmdate( 'c' ),
-                'status' => 'last-reported-active',
+                'consent' => array(
+                    'granted' => true,
+                    'notice_version' => $state['policy_version'],
+                    'granted_at_utc' => $state['consented_at_utc'],
+                ),
             );
-            $ok = $this->post( $contract['report_endpoint'], $data, $contract, 'report' );
+            if ( empty( $state['enrolled'] ) ) {
+                if ( ! $this->post( $contract['enroll_endpoint'], $data, $state ) ) {
+                    $this->schedule_report( DAY_IN_SECONDS );
+                    return; // Site-ownership proof failed; do not send report.
+                }
+                $state['enrolled'] = true;
+                update_option( $this->option, $state, false );
+            }
+            $ok = $this->post( $contract['report_endpoint'], $data, $state );
             if ( $ok ) {
                 $state['last_reported_at'] = time();
                 update_option( $this->option, $state, false );
@@ -300,14 +317,12 @@ if ( ! class_exists( __NAMESPACE__ . '\\ConsentClient', false ) ) {
         }
 
         private function send_deletion_request( $state ) {
-            $contract = $this->contract();
-            if ( ! $contract || ! isset( $state['installation_id'] ) ) {
-                return false;
-            }
-            return $this->post( $contract['revoke_endpoint'], array(
+            if ( ! isset( $state['installation_id'], $state['secret_hex'] ) ) return false;
+            // Revocation works even if the operator disabled NEW reporting.
+            return $this->post( 'https://plugins.hashe.com/api/v1/telemetry/revoke', array(
                 'installation_id' => $state['installation_id'],
-                'plugin_slug' => $this->slug,
-            ), $contract, 'revoke' );
+                'plugin' => $this->slug,
+            ), $state );
         }
     }
 }
