@@ -277,7 +277,6 @@ if ( ! class_exists( __NAMESPACE__ . '\\ConsentClient', false ) ) {
             return array(
                 'schema_version' => 1,
                 'plugin' => $this->slug,
-                'installation_id' => $installation,
                 'proof' => $proof,
             );
         }
