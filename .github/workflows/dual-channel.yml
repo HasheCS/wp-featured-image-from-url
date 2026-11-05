@@ -1,0 +1,39 @@
+name: Featured Image dual-channel QA
+on:
+  push:
+    branches: ['release/**']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  packages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Validate independent and WordPress.org ZIPs
+        run: |
+          set -euo pipefail
+          python3 tests/distribution-check.py
+          python3 tools/build_distributions.py --output dist
+          (cd dist && sha256sum --check INDEPENDENT-SHA256SUMS.txt && sha256sum --check WPORG-SHA256SUMS.txt)
+          unzip -tq dist/wp-featured-image-from-url-v1.1.0.zip
+          unzip -tq dist/featured-image-from-url-v1.1.0-wporg.zip
+          unzip -Z1 dist/wp-featured-image-from-url-v1.1.0.zip | grep -Fxq 'featured-image-from-url/featured-image-from-url.php'
+      - name: Run all existing import tests and embedded-client lint
+        run: |
+          set -euo pipefail
+          php -l featured-image-from-url.php
+          php -l includes/hashe-core/v1/consent-client.php
+          php -l includes/hashe-core/v1/update-client.php
+          php tests/php-smoke.php
+          node --check assets/js/featured-image-from-url.js
+          node tests/frame-regression.cjs
