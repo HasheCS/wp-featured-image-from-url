@@ -23,6 +23,15 @@ if($option!==false)WP_CLI::error('Optional installation reporting enabled or con
 if(get_option('hashe_fifu_show_privacy_notice')!=='1')WP_CLI::error('Admin-only privacy choice notice not prepared');
 if(!has_action('admin_post_hashe_fifu_privacy_choice'))WP_CLI::error('Optional consent admin choice not registered');
 if(!has_action('wp_ajax_fifu_fetch_featured_from_url'))WP_CLI::error('Existing media import AJAX unavailable');
+// Real WordPress guard regression: core may allow the site's own localhost URL.
+$guard = new ReflectionMethod( 'FIFU_Plugin', 'safe_url' );
+$guard->setAccessible( true );
+foreach ( array( 'http://127.0.0.1/image.png', 'http://10.0.0.1/x.png',
+ 'http://169.254.169.254/latest/meta-data/', 'http://192.168.1.1/image.png',
+ 'http://[::1]/image.png', 'http://localhost/image.png' ) as $unsafe ) {
+ if ( false !== $guard->invoke( null, $unsafe ) ) WP_CLI::error( 'Private/loopback URL accepted: ' . $unsafe );
+}
+WP_CLI::log('PRIVATE_AND_LOOPBACK_SSRF_GUARD=PASS');
 WP_CLI::log('CHANNEL='.$channel);
 WP_CLI::log('PRESERVED_INSTALLED_BASENAME='.$basename);
 WP_CLI::log('DEFAULT_REPORTING_OFF=PASS');
