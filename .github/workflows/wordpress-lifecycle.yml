@@ -57,7 +57,7 @@ jobs:
             $WP plugin install "$GITHUB_WORKSPACE/dist/wp-featured-image-from-url-v1.1.0.zip" --activate --path="$ROOT"
             HASHE_QA_CHANNEL=independent $WP eval-file "$GITHUB_WORKSPACE/tests/wordpress-lifecycle.php" --path="$ROOT"
             python3 tests/build-native-update-fixture.py "$GITHUB_WORKSPACE/dist/wp-featured-image-from-url-v1.1.0.zip" "$RUNNER_TEMP/featured-synthetic-1.1.1.zip"
-            HASHE_QA_EPHEMERAL=1 HASHE_QA_SYNTHETIC_ZIP="$RUNNER_TEMP/featured-synthetic-1.1.1.zip" $WP eval-file "$GITHUB_WORKSPACE/tests/wordpress-native-update-simulation.php" --path="$ROOT"
+            HASHE_QA_EPHEMERAL=1 HASHE_QA_WP_ROOT="$ROOT" HASHE_QA_SYNTHETIC_ZIP="$RUNNER_TEMP/featured-synthetic-1.1.1.zip" $WP eval-file "$GITHUB_WORKSPACE/tests/wordpress-native-update-simulation.php" --path="$ROOT"
             $WP plugin deactivate featured-image-from-url --path="$ROOT"
             $WP plugin uninstall featured-image-from-url --path="$ROOT"
             $WP plugin install "$GITHUB_WORKSPACE/dist/featured-image-from-url-v1.1.0-wporg.zip" --activate --path="$ROOT"
