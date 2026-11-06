@@ -81,6 +81,21 @@ final class FIFU_Plugin {
         if ( ! $url || ! preg_match( '~^https?://~i', $url ) ) {
             return false;
         }
+        // A site's own localhost address may pass WordPress's safe URL check.
+        // Reject private/reserved targets explicitly before downloading images.
+        $host = wp_parse_url( $url, PHP_URL_HOST );
+        if ( ! is_string( $host ) || '' === $host ) {
+            return false;
+        }
+        $host = trim( strtolower( $host ), '[]' );
+        if ( 'localhost' === $host || '.localhost' === substr( $host, -10 ) ) {
+            return false;
+        }
+        $resolved = filter_var( $host, FILTER_VALIDATE_IP ) ? $host : gethostbyname( $host );
+        if ( filter_var( $resolved, FILTER_VALIDATE_IP ) &&
+            false === filter_var( $resolved, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) ) {
+            return false;
+        }
         return wp_http_validate_url( $url ) ? $url : false;
     }
 
