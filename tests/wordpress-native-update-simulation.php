@@ -7,9 +7,18 @@ if ( ! defined( 'WP_CLI' ) || ! WP_CLI || getenv( 'HASHE_QA_EPHEMERAL' ) !== '1'
     fwrite( STDERR, "Explicit disposable WordPress QA mode required\n" );
     exit( 2 );
 }
-$site = home_url( '/' );
-if ( ! in_array( $site, array( 'http://localhost:8098/', 'http://127.0.0.1:18977/' ), true ) ) {
-    WP_CLI::error( 'Refusing a non-isolated test site' );
+// Require a protected disposable install and localhost-only WordPress origin.
+$root = getenv( 'HASHE_QA_WP_ROOT' );
+if ( ! is_string( $root ) || ! is_dir( $root ) ||
+    realpath( $root ) !== realpath( ABSPATH ) ) {
+    WP_CLI::error( 'Refusing an unverified disposable WordPress root' );
+}
+$origin = wp_parse_url( home_url( '/' ) );
+if ( ! is_array( $origin ) ||
+    ( $origin['scheme'] ?? null ) !== 'http' ||
+    ! in_array( $origin['host'] ?? '', array( 'localhost', '127.0.0.1' ), true ) ||
+    ! in_array( (int) ( $origin['port'] ?? 0 ), array( 8098, 18977 ), true ) ) {
+    WP_CLI::error( 'Refusing a non-localhost isolated test URL' );
 }
 require_once ABSPATH . 'wp-admin/includes/plugin.php';
 require_once ABSPATH . 'wp-admin/includes/file.php';
