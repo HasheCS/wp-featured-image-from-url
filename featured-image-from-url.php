@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Featured Image From URL
  * Description: Import remote images into the WordPress Media Library directly from the Media modal, Add Media, or Featured Image selector.
- * Version: 1.1.0-rc.1
+ * Version: 1.1.0
  * Author: Hashe Computer Solutions
  * Author URI: https://hashe.com/
  * License: MIT
@@ -41,7 +41,7 @@ final class FIFU_Plugin {
             self::HANDLE,
             plugins_url( 'assets/js/featured-image-from-url.js', __FILE__ ),
             array( 'media-views', 'jquery', 'underscore' ),
-            '1.1.0-rc.1',
+            '1.1.0',
             true
         );
         $post_id = 0;
@@ -79,6 +79,21 @@ final class FIFU_Plugin {
         }
         $url = esc_url_raw( trim( $raw ), array( 'http', 'https' ) );
         if ( ! $url || ! preg_match( '~^https?://~i', $url ) ) {
+            return false;
+        }
+        // A site's own localhost address may pass WordPress's safe URL check.
+        // Reject private/reserved targets explicitly before downloading images.
+        $host = wp_parse_url( $url, PHP_URL_HOST );
+        if ( ! is_string( $host ) || '' === $host ) {
+            return false;
+        }
+        $host = trim( strtolower( $host ), '[]' );
+        if ( 'localhost' === $host || '.localhost' === substr( $host, -10 ) ) {
+            return false;
+        }
+        $resolved = filter_var( $host, FILTER_VALIDATE_IP ) ? $host : gethostbyname( $host );
+        if ( filter_var( $resolved, FILTER_VALIDATE_IP ) &&
+            false === filter_var( $resolved, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE ) ) {
             return false;
         }
         return wp_http_validate_url( $url ) ? $url : false;
@@ -217,3 +232,31 @@ final class FIFU_Plugin {
     }
 }
 FIFU_Plugin::init();
+
+/** HP-PLUG-001 v1.2: optional post-activation reporting is off until an
+ * explicit site-owner consent and reviewed secure service contract exist.
+ */
+require_once __DIR__ . '/includes/hashe-core/v1/consent-client.php';
+require_once __DIR__ . '/includes/hashe-core/v1/site-proof-client.php';
+\Hashe\PluginTools\SiteProofV1\Responder::boot('wp-featured-image-from-url','hashe_fifu_optional_reporting_v1');
+( new \Hashe\FeaturedImage\PluginTools\V1\ConsentClient(
+    'wp-featured-image-from-url',
+    plugin_basename( __FILE__ )
+) )->register();
+if ( function_exists( 'register_activation_hook' ) ) {
+    register_activation_hook( __FILE__, array( '\Hashe\FeaturedImage\PluginTools\V1\ConsentClient', 'on_activation' ) );
+    register_deactivation_hook( __FILE__, array( '\Hashe\FeaturedImage\PluginTools\V1\ConsentClient', 'on_deactivation' ) );
+    register_uninstall_hook( __FILE__, array( '\Hashe\FeaturedImage\PluginTools\V1\ConsentClient', 'on_uninstall' ) );
+}
+/* The independent package includes this native updater. The WordPress.org
+ * package omits it and receives updates exclusively from WordPress.org.
+ */
+if ( function_exists( 'add_filter' ) && is_file( __DIR__ . '/includes/hashe-core/v1/update-client.php' ) ) {
+    require_once __DIR__ . '/includes/hashe-core/v1/update-client.php';
+    ( new \Hashe\FeaturedImage\PluginTools\V1\UpdateClient(
+        'wp-featured-image-from-url',
+        plugin_basename( __FILE__ ),
+        'https://plugins.hashe.com/wp-featured-image-from-url',
+        'https://plugins.hashe.com/api/v1/updates/wp-featured-image-from-url'
+    ) )->register();
+}
